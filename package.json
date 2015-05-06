@@ -1,0 +1,12 @@
+{
+  "name": "oe-sphinx",
+  "version": "0.1.1",
+  "description": "Demonstartion of using Sphinx indexing from OpenEdge through node",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hustlethroat/oe-sphinx" 
+  },
+  "dependencies": {
+    "mysql": "2.6.2"
+  }
+}
