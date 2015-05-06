@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Search index demo</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="//code.jquery.com/jquery-1.11.3.min.js"></script>
+    <script src="//code.jquery.com/ui/1.11.3/jquery-ui.min.js"></script>
+    <script src="demo.js" async></script>
+  </head>
+  <body>
+    <div class="container">
+      <h1 class="heading">Search demo page</h1>
+      <div class="search" data-hook="search">
+        <input type="text" data-hook="search-input" class="search__input" placeholder="Search ..." />
+        <span class="search__input-loader" style="display:none"></span>
+      </div>
+      <div class="article">
+        <h2 class="article__title" data-hook="article-title"></h2>
+        <div class="article__body" data-hook="article-body"></div>
+      </div>
+    </div>
+  </body>
+</html>
