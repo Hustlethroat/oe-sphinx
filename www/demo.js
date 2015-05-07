@@ -66,7 +66,7 @@ $(function() {
   // called when an item is selected
   function selectItem (event, ui) {
     $('[data-hook~=article-title]').html(ui.item.value);
-    $('[data-hook~=article-body]').html(ui.item.desc);
+    $('[data-hook~=article-body]').html(ui.item.article);
   }
 
   // number of occurences
@@ -97,18 +97,45 @@ $(function() {
   // initialize autocomplete
   $input.autocomplete({
     minLength: 3,
-    source: dummyData,
     select: selectItem,
-    appendTo: '[data-hook~=search]'
+    appendTo: '[data-hook~=search]',
+    source: function(request, response) {
+      $('[data-hook~=search-loader]').show();
+
+      $.ajax({
+        url: '/get',
+        type: 'get',
+        dataType: 'json',
+        data: {
+          q: request.term
+        },
+        success: function(data) {
+          $('[data-hook~=search-loader]').hide();
+          if (data && data.articles && data.articles.length > 0) {
+            for (k in data.articles) {
+              data.articles[k].value = data.articles[k].title;
+            };
+            response(data.articles);
+          } else {
+            response([]);
+          }
+        },
+        error: function(xhr, errtype) {
+          console.warn('Autocomplete fail: ' + errtype);
+          $('[data-hook~=search-loader]').hide();
+          response([]);
+        },
+      });
+    }
   });
 
   // custom autocomplete list
   $input.data('ui-autocomplete')._renderItem = function (ul, item) {
     var count = 0;
-    count += countWords(this.term, item.desc);
+    count += countWords(this.term, item.article);
     count += countWords(this.term, item.value);
     return $('<li class="list__item">')
-      .html(wrapQuery(this.term, shorten(item.desc, 150)))
+      .html(wrapQuery(this.term, shorten(item.article, 150)))
       .prepend(
         $('<div class="list__item-header">' +
         wrapQuery(this.term, shorten(item.value, 50)) + '</div>')

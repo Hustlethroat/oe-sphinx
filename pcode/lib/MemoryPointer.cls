@@ -13,7 +13,7 @@ BLOCK-LEVEL ON ERROR UNDO, THROW.
 USING Progress.Lang.*.
 
 
-CLASS mainib.web.core.lib.MemoryPointer:
+CLASS lib.MemoryPointer:
 
     DEFINE PRIVATE PROPERTY mPointer  AS MEMPTR NO-UNDO GET. SET.
     DEFINE PRIVATE PROPERTY iDataSize AS INT64  NO-UNDO GET. SET.

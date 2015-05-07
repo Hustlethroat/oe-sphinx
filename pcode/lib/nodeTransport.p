@@ -11,6 +11,7 @@ BLOCK-LEVEL ON ERROR UNDO, THROW.
 /* ***************************  Definitions  ************************** */
 
 USING lib.MemoryPointer.
+USING Progress.Json.ObjectModel.JsonObject.
 
 DEFINE INPUT  PARAMETER oJsonObject AS JsonObject NO-UNDO.
 DEFINE OUTPUT PARAMETER lcOut       AS LONGCHAR   NO-UNDO.
@@ -28,14 +29,23 @@ DEFINE VARIABLE cConnStr     AS CHARACTER     NO-UNDO INITIAL "-H localhost -S 3
 
 /* ***************************  Functions  **************************** */
 
+FUNCTION msg RETURNS LOGICAL (cLevel AS CHARACTER, cMsg AS CHARACTER):
+  IF LOG-MANAGER:LOGFILE-NAME <> ? THEN DO:
+    LOG-MANAGER:WRITE-MESSAGE (cMsg, CAPS (cLevel)).
+  END.
+  ELSE DO:
+    MESSAGE SUBSTITUTE(":&1: &2", STRING(cLevel, "x(7)"), cMsg).
+  END.
+END FUNCTION.
+
 /* construct output memptr for node connection from json */
 FUNCTION prepareData MEMPTR( jsData AS JsonObject ):
     DEFINE VARIABLE iLength AS INTEGER NO-UNDO.
     DEFINE VARIABLE mOut    AS MEMPTR  NO-UNDO.
     DEFINE VARIABLE mJson   AS MEMPTR  NO-UNDO.
     
-    msg("dbg", "prepare data for node").
-    oJsonObject:WRITE(mJson, TRUE, "UTF-8").
+    msg("inf", "prepare data for node").
+    jsData:WRITE(mJson, TRUE, "UTF-8").
     iLength = GET-SIZE(mJson).
     
     SET-SIZE(mOut) = 0.
@@ -48,9 +58,7 @@ FUNCTION prepareData MEMPTR( jsData AS JsonObject ):
 END FUNCTION.
 
 
-/* connect node and stuff (needs size of data) */
 FUNCTION prepareConnection LOGICAL (iLength AS INTEGER):
-  DEFINE VARIABLE cConnStr    AS CHARACTER NO-UNDO.
   DEFINE VARIABLE lStatus     AS LOGICAL   NO-UNDO.
   
   CREATE SOCKET hNodeServer.
@@ -96,7 +104,7 @@ FUNCTION sendData LOGICAL(mOut AS MEMPTR):
   
   iLength = GET-SIZE(mOut) - 1.
   
-  msg("dbg", SUBSTITUTE("Node request: &1B", iLength)).
+  msg("inf", SUBSTITUTE("Node request: &1B", iLength)).
   lStatus = hNodeServer:WRITE(mOut, 1, iLength) NO-ERROR.
   IF lStatus = FALSE THEN DO:
     UNDO, THROW NEW Progress.Lang.AppError(SUBSTITUTE("hNodeServer:WRITE(mOut, 1, iLength=&1) (&2)":U, iLength, ERROR-STATUS:GET-MESSAGE(1)), 1).
@@ -134,21 +142,23 @@ FUNCTION readData LONGCHAR():
 END FUNCTION.
 
 /* ***************************  Main Block  *************************** */
-
+msg("inf", "Start nodeTransport").
 mData = prepareData (oJsonObject).
-
+msg("inf", "Before prepareConnection").
 prepareConnection(GET-SIZE(mData) - 1).
-
+msg("inf", "Before sendData").
 sendData(mData).
-
+msg("inf", "Before readData").
 lcOut = readData().
-
+CATCH oErr AS Progress.Lang.Error :
+    msg("err", oErr:GetMessage(1)).
+END CATCH.
 FINALLY:
   IF VALID-HANDLE(hNodeServer) THEN DO:
     IF hNodeServer:CONNECTED() THEN hNodeServer:DISCONNECT() NO-ERROR.
     DELETE OBJECT hNodeServer NO-ERROR.
   END.
-  msg("dbg", "End.":U).
+  msg("inf", "End nodeTransport.":U).
   RETURN.
 END FINALLY.
 
@@ -157,16 +167,25 @@ END FINALLY.
 
 PROCEDURE Node-Response:
   DEFINE VARIABLE lastBytes AS CHARACTER NO-UNDO.
-  
+  DEFINE VARIABLE lStatus AS LOGICAL   NO-UNDO.
+  DEFINE VARIABLE iReadLength AS INTEGER NO-UNDO.
+  DEFINE VARIABLE iLength AS INTEGER NO-UNDO.
+ 
+ 
   IF NOT hNodeServer:CONNECTED() THEN 
   DO:
     msg("wrn", "Not connected hNodeServer in Node-Response").
     RETURN.
   END.
   
+  msg("dbg", "1").
+  SET-SIZE(mNodeResp) = 0.
+  SET-SIZE(mNodeResp) = 16385. 
   lStatus = hNodeServer:READ(mNodeResp, 1, 16384, 1) NO-ERROR.
+  msg("dbg", "2").
   IF lStatus = FALSE THEN  DO:
-    UNDO, THROW NEW GeneralError(SUBSTITUTE(
+    msg("dbg", SUBSTITUTE ("error: &1", ERROR-STATUS:GET-MESSAGE(1))).
+    UNDO, THROW NEW Progress.Lang.AppError(SUBSTITUTE(
       "Read from hNodeServer socket error (1). hNodeServer:CONNECTED() = &1. lStatus = &2. hNodeServer:GET-BYTES-AVAILABLE() = &3. hNodeServer:BYTES-READ = &4. GET-SIZE(mNodeResp) = &5. ERROR-STATUS:ERROR = &6. ERROR-STATUS:GET-MESSAGE(1) = &7.",
       hNodeServer:CONNECTED(),
       lStatus,
@@ -180,21 +199,23 @@ PROCEDURE Node-Response:
   
   iReadLength = hNodeServer:BYTES-READ.
   
+  msg("dbg", SUBSTITUTE ("Node-Response: &1", iReadLength)).
   IF iReadLength > 0 THEN DO:
     oMemPtr:appendData(mNodeResp, iReadLength).
     iLength = iLength + iReadLength.
 
     /* part of end sign was read before, go back and delete it*/
     IF iReadLength < 5 THEN DO:
-      msg("dbg", SUBSTITUTE("Less than 5 bytes from last chunk. Node response end (&1B)", iLength)) .
+      msg("inf", SUBSTITUTE("Less than 5 bytes from last chunk. Node response end (&1B)", iLength)) .
       lResponseEnd = TRUE.
       RETURN.
     END.
 
     DO ON ERROR UNDO, THROW :
       lastBytes = oMemPtr:getLongCharSlice(-5).
+      msg("dbg", SUBSTITUTE("Last bytes: &1", STRING(lastBytes))).
       IF lastBytes = "~{~{E~}~}" THEN DO:
-        msg("dbg", SUBSTITUTE("Read data end sign from Node (&1B)", iLength)) .
+        msg("inf", SUBSTITUTE("Read data end sign from Node (&1B)", iLength)) .
         lResponseEnd = TRUE.
       END.
       

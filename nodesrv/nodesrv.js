@@ -5,7 +5,7 @@
     var mysql = require('mysql');
 
     var nodePort = 33120;
-    var sphinxHost = 'sphinx.ut.int.vb.lt';
+    var sphinxHost = 'localhost';
     var sphinxPort = 9306;
 
     var sqlPool   = null;
@@ -14,21 +14,28 @@
     // Main received data processing
     function processRequest(dataString, c) {
       var q;
+      var sql;
       var callback = function(result) {
+          console.log('End connection', result);
           c.end(JSON.stringify(result) + "{{E}}");
           callback = null;
       };
-
+      console.log('Start processing for', dataString);
       try {
+        q = JSON.parse(dataString);
+        console.log('data object', q);
+        q = q.q;
         sqlPool.getConnection(function(err, connection){
           if (err) {
             callback({error: 'getConnection fail: ' + err});
             return;
           }
-          q = dataString.replace(/[a-z0-9]/gi, ' ');
+          q = q.replace(/[^a-z0-9]/gi, ' ');
+          sql = 'SELECT * FROM idx_wiki_articles WHERE MATCH(\'' + q + '\');';
+          console.log('sql query', sql);
           connection.query(
             { 
-              sql: 'SELECT * FROM article WHERE MATCH(' + q + ');',
+              sql: sql,
               timeout: 5000
             },
             function (err, rows, fields) {
@@ -39,6 +46,7 @@
                 return;
               }
               callback({error: '', rows: rows});
+              connection.release();
             }
           );
         });
